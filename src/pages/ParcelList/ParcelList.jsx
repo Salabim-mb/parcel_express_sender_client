@@ -3,6 +3,45 @@ import be from "../../constants/backend";
 import {getCORSHeaders} from "../../utils/getCORSHeaders";
 import {UserContext} from "../../context/UserContext";
 import {Alert, Card, Container, Form, Table} from "react-bootstrap";
+import "./ParcelList.css";
+
+
+const sendNotification = async(token, data) => {
+    const url = be.NOTIFICATIONS;
+    const headers = getCORSHeaders(token);
+
+    const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+            receiver: data.sender,
+            message: "Parcel changed status to: " + data.status,
+            date: (new Date()).toISOString()
+        })
+    })
+
+    if (res.status === 200) {
+        return await res.json();
+    } else {
+        throw await res.json();
+    }
+}
+
+const getNotifications = async(token) => {
+    const url = be.NOTIFICATIONS;
+    const headers = getCORSHeaders(token);
+
+    const res = await fetch(url, {
+        method: "GET",
+        headers
+    });
+
+    if (res.status === 200) {
+        return await res.json();
+    } else {
+        throw await res.json();
+    }
+};
 
 const loadParcels = async(token) => {
     const url  = be.API_PARCEL_LIST;
@@ -44,6 +83,8 @@ const ParcelList = () => {
     const [loading, setLoading] = useState(false);
     const [putSuccess, setPutSuccess] = useState(false);
     const [putError, setPutError] = useState(false);
+    const [notificationFlag, setNotificationFlag] = useState(false);
+    const [notifications, setNotifications] = useState([]);
     const user = useContext(UserContext);
     const statuses = ["Not assigned", "Confirmed", "Hit the road", "Awaiting", "Delivered"]
 
@@ -58,10 +99,29 @@ const ParcelList = () => {
                 setError(true);
             } finally {
                 setLoading(false);
+                setNotificationFlag(true);
             }
         }
         loadParcelList();
     }, [user.token])
+
+    useEffect(() => {
+        const handleLoadingNots = async() => {
+            setNotificationFlag(false);
+            try {
+                let {notifications} = await getNotifications(user.token);
+                setNotifications(notifications);
+                setTimeout(() => setNotifications([]), 5000);
+            } catch(ex) {
+                console.log(ex);
+            } finally {
+                setTimeout(() => setNotificationFlag(true), 3000);
+            }
+        }
+        if (notificationFlag) {
+            handleLoadingNots();
+        }
+    }, [notificationFlag])
 
     const handleUpdate = async (e, data) => {
         e.preventDefault();
@@ -70,6 +130,12 @@ const ParcelList = () => {
         try {
             let res = await updateParcel(user.token, data);
             setAlertText(res.message);
+            try {
+                let notres = await sendNotification(user.token, data);
+                console.log(notres)
+            } catch(exc) {
+                console.log(exc)
+            }
             setPutSuccess(true);
         } catch(ex) {
             setAlertText(ex.message);
@@ -131,6 +197,9 @@ const ParcelList = () => {
                                 </Table>
                             </>
                         )}
+                        {notifications.map((n) => (
+                            <Alert className="floating-alert" variant="info">{n.sender} -> New parcel! ({n.date})</Alert>
+                        ))}
                     </Card.Body>
                 )}
             </Card>
